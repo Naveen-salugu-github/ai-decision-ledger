@@ -30,7 +30,16 @@ export async function initDb() {
       tool_call TEXT,
       latency_ms INTEGER,
       risk_flag BOOLEAN DEFAULT FALSE,
+      tokens_prompt INTEGER,
+      tokens_completion INTEGER,
+      temperature REAL,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
+  `);
+
+  await pool.query(`
+    ALTER TABLE steps ADD COLUMN IF NOT EXISTS tokens_prompt INTEGER;
+    ALTER TABLE steps ADD COLUMN IF NOT EXISTS tokens_completion INTEGER;
+    ALTER TABLE steps ADD COLUMN IF NOT EXISTS temperature REAL;
   `);
 }

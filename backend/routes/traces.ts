@@ -11,6 +11,9 @@ interface TracePostBody {
   tool_calls?: string[] | null;
   latency?: number | null;
   risk_flag?: boolean;
+  tokens_prompt?: number | null;
+  tokens_completion?: number | null;
+  temperature?: number | null;
 }
 
 export async function tracesRoutes(
@@ -29,7 +32,10 @@ export async function tracesRoutes(
       timestamp,
       tool_calls,
       latency,
-      risk_flag
+      risk_flag,
+      tokens_prompt,
+      tokens_completion,
+      temperature,
     } = request.body;
 
     if (!agent || !model || !prompt) {
@@ -51,9 +57,18 @@ export async function tracesRoutes(
 
       // main step for the model call
       await client.query(
-        `INSERT INTO steps (trace_id, prompt, response, latency_ms, risk_flag)
-         VALUES ($1, $2, $3, $4, $5)`,
-        [trace.id, prompt, response, latency ?? null, risk_flag ?? false]
+        `INSERT INTO steps (trace_id, prompt, response, latency_ms, risk_flag, tokens_prompt, tokens_completion, temperature)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+        [
+          trace.id,
+          prompt,
+          response,
+          latency ?? null,
+          risk_flag ?? false,
+          tokens_prompt ?? null,
+          tokens_completion ?? null,
+          temperature ?? null,
+        ]
       );
 
       // optional tool call steps
@@ -123,7 +138,7 @@ export async function tracesRoutes(
       }
 
       const stepsRes = await pool.query(
-        `SELECT id, prompt, response, tool_call, latency_ms, risk_flag, created_at
+        `SELECT id, prompt, response, tool_call, latency_ms, risk_flag, tokens_prompt, tokens_completion, temperature, created_at
          FROM steps
          WHERE trace_id = $1
          ORDER BY created_at ASC`,
