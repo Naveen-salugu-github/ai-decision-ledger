@@ -1,117 +1,126 @@
 import React from "react";
+import type { Trace } from "@/api/traces";
+import type { TraceStep } from "@/api/traces";
+import LatencyBadge from "./LatencyBadge";
 
-export interface TraceStep {
-  id: string;
-  prompt?: string | null;
-  response?: string | null;
-  tool_call?: string | null;
-  latency_ms?: number | null;
-  risk_flag?: boolean;
-  created_at: string;
-}
-
-interface TraceTimelineProps {
+export interface TraceTimelineProps {
+  trace: Trace;
   steps: TraceStep[];
+  /** When replay has been run, pass the replay result for "Replay Executed" step */
+  replayExecutedAt?: string;
+  replayLatencyMs?: number;
 }
 
-const humanLabelForStep = (step: TraceStep, index: number) => {
-  if (step.tool_call) {
-    return `Tool Call – ${step.tool_call}`;
-  }
-  if (index === 0 && step.prompt) {
-    return "Prompt Sent to Model";
-  }
-  if (step.response && !step.prompt) {
-    return "Model Response";
-  }
-  if (step.prompt && step.response) {
-    return "Model Call";
-  }
-  return "Step";
-};
+type TimelineEventType =
+  | "Trace Created"
+  | "Prompt Sent"
+  | "Model Response"
+  | "Latency Recorded"
+  | "Replay Executed";
 
-export default function TraceTimeline({ steps }: TraceTimelineProps) {
+interface TimelineStep {
+  type: TimelineEventType;
+  timestamp: string;
+  content: string;
+}
+
+function buildTimelineSteps(
+  trace: Trace,
+  steps: TraceStep[],
+  replayExecutedAt?: string,
+  replayLatencyMs?: number
+): TimelineStep[] {
+  const result: TimelineStep[] = [];
+
+  result.push({
+    type: "Trace Created",
+    timestamp: trace.created_at,
+    content: `Trace ${trace.id.slice(0, 8)}… · Agent: ${trace.agent}, Model: ${trace.model}`,
+  });
+
+  const mainStep = steps.find((s) => s.prompt != null || s.response != null) ?? steps[0];
+  if (mainStep) {
+    if (mainStep.prompt) {
+      result.push({
+        type: "Prompt Sent",
+        timestamp: mainStep.created_at,
+        content: mainStep.prompt.slice(0, 200) + (mainStep.prompt.length > 200 ? "…" : ""),
+      });
+    }
+    if (mainStep.response) {
+      result.push({
+        type: "Model Response",
+        timestamp: mainStep.created_at,
+        content: mainStep.response.slice(0, 200) + (mainStep.response.length > 200 ? "…" : ""),
+      });
+    }
+    if (typeof mainStep.latency_ms === "number") {
+      result.push({
+        type: "Latency Recorded",
+        timestamp: mainStep.created_at,
+        content: `${mainStep.latency_ms} ms`,
+      });
+    }
+  }
+
+  if (replayExecutedAt) {
+    result.push({
+      type: "Replay Executed",
+      timestamp: replayExecutedAt,
+      content:
+        typeof replayLatencyMs === "number"
+          ? `Replay completed in ${replayLatencyMs} ms`
+          : "Replay completed",
+    });
+  }
+
+  return result;
+}
+
+export default function TraceTimeline({
+  trace,
+  steps,
+  replayExecutedAt,
+  replayLatencyMs,
+}: TraceTimelineProps) {
+  const timelineSteps = buildTimelineSteps(
+    trace,
+    steps,
+    replayExecutedAt,
+    replayLatencyMs
+  );
+
   return (
     <div className="relative">
-      <div className="absolute left-3 top-0 bottom-0 w-px bg-slate-800" />
-      <ul className="space-y-4">
-        <li className="relative flex gap-3">
-          <div className="mt-1 h-2.5 w-2.5 rounded-full bg-sky-500" />
-          <div>
-            <div className="text-xs font-semibold uppercase tracking-wide text-slate-300">
-              User Request
+      <div className="absolute left-4 top-0 bottom-0 w-px bg-slate-700" />
+      <ul className="space-y-0">
+        {timelineSteps.map((step, index) => (
+          <li key={`${step.type}-${index}`} className="relative flex gap-4 pb-4 last:pb-0">
+            <div className="relative z-10 mt-1 flex h-3 w-3 shrink-0 items-center justify-center rounded-full bg-slate-600 ring-4 ring-slate-900">
+              <span className="h-1.5 w-1.5 rounded-full bg-sky-400" />
             </div>
-            <div className="mt-1 text-xs text-slate-400">
-              Request entered by the calling service / developer.
-            </div>
-          </div>
-        </li>
-        {steps.map((step, index) => (
-          <li key={step.id} className="relative flex gap-3">
-            <div
-              className={`mt-1 h-2.5 w-2.5 rounded-full ${
-                step.risk_flag ? "bg-rose-500" : "bg-slate-500"
-              }`}
-            />
-            <div className="flex-1 rounded-md border border-slate-800 bg-slate-900/60 p-3">
-              <div className="flex items-center justify-between gap-4">
-                <div className="text-xs font-semibold uppercase tracking-wide text-slate-300">
-                  {humanLabelForStep(step, index)}
-                </div>
-                <div className="flex items-center gap-2 text-[11px] text-slate-500">
-                  <span>
-                    {new Date(step.created_at).toLocaleTimeString(undefined, {
-                      hour12: false
-                    })}
-                  </span>
-                  {typeof step.latency_ms === "number" && (
-                    <span className="rounded border border-slate-700 px-1.5 py-0.5 text-[10px]">
-                      {step.latency_ms} ms
-                    </span>
-                  )}
-                  {step.risk_flag && (
-                    <span className="rounded border border-rose-500/50 bg-rose-500/10 px-1.5 py-0.5 text-[10px] text-rose-300">
-                      High Risk
-                    </span>
-                  )}
-                </div>
+            <div className="min-w-0 flex-1 rounded-lg border border-slate-700 bg-slate-900/60 p-4">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="text-xs font-semibold uppercase tracking-wide text-sky-300">
+                  {step.type}
+                </span>
+                <span className="text-xs text-slate-500">
+                  {new Date(step.timestamp).toLocaleString()}
+                </span>
               </div>
-              {step.prompt && (
-                <div className="mt-2">
-                  <div className="text-[11px] font-medium uppercase tracking-wide text-slate-400">
-                    Prompt
-                  </div>
-                  <pre className="mt-1 overflow-x-auto rounded bg-slate-950/70 p-2 text-xs text-slate-200">
-{step.prompt}
+              <div className="mt-2 text-sm text-slate-300">
+                {step.type === "Latency Recorded" ? (
+                  <LatencyBadge latencyMs={Number(step.content) || 0} />
+                ) : (
+                  <pre className="whitespace-pre-wrap break-words text-xs">
+                    {step.content}
                   </pre>
-                </div>
-              )}
-              {step.response && (
-                <div className="mt-2">
-                  <div className="text-[11px] font-medium uppercase tracking-wide text-slate-400">
-                    Response
-                  </div>
-                  <pre className="mt-1 overflow-x-auto rounded bg-slate-950/70 p-2 text-xs text-slate-200">
-{step.response}
-                  </pre>
-                </div>
-              )}
+                )}
+              </div>
             </div>
           </li>
         ))}
-        <li className="relative flex gap-3">
-          <div className="mt-1 h-2.5 w-2.5 rounded-full bg-emerald-500" />
-          <div>
-            <div className="text-xs font-semibold uppercase tracking-wide text-slate-300">
-              Final Decision
-            </div>
-            <div className="mt-1 text-xs text-slate-400">
-              Downstream service consumes the AI output and tool results.
-            </div>
-          </div>
-        </li>
       </ul>
     </div>
   );
 }
-

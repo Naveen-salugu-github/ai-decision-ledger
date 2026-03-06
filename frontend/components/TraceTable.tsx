@@ -59,8 +59,8 @@ export default function TraceTable({ traces, loading, error }: TraceTableProps) 
               </td>
               <td className="px-4 py-3">
                 {trace.has_risk ? (
-                  <span className="rounded-full bg-rose-500/15 px-2 py-0.5 text-xs text-rose-300">
-                    High
+                  <span className="inline-flex items-center gap-1 rounded-full bg-rose-500/15 px-2 py-0.5 text-xs text-rose-300">
+                    <span aria-hidden>⚠</span> Risk Detected
                   </span>
                 ) : (
                   <span className="rounded-full bg-slate-700/50 px-2 py-0.5 text-xs text-slate-400">

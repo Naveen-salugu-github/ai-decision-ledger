@@ -55,7 +55,10 @@ export async function tracesRoutes(
 
       const trace = traceInsert.rows[0];
 
-      // main step for the model call
+      // main step for the model call — auto-set risk_flag if latency > 5000ms
+      const hasHighLatencyRisk = (latency ?? 0) > 5000;
+      const stepRiskFlag = risk_flag ?? hasHighLatencyRisk;
+
       await client.query(
         `INSERT INTO steps (trace_id, prompt, response, latency_ms, risk_flag, tokens_prompt, tokens_completion, temperature)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
@@ -64,7 +67,7 @@ export async function tracesRoutes(
           prompt,
           response,
           latency ?? null,
-          risk_flag ?? false,
+          stepRiskFlag,
           tokens_prompt ?? null,
           tokens_completion ?? null,
           temperature ?? null,
