@@ -1,5 +1,5 @@
 import { FastifyInstance, FastifyPluginOptions } from "fastify";
-import { pool } from "../db.js";
+import pool from "../db.js";
 
 interface TracePostBody {
   trace_id?: string;

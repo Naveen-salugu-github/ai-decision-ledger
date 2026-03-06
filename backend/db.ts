@@ -1,20 +1,15 @@
 import dotenv from "dotenv";
-import pg from "pg";
+import { Pool } from "pg";
 
 dotenv.config();
 
-const { Pool } = pg;
-
-export const pool = new Pool({
-  host: process.env.PGHOST || "localhost",
-  port: Number(process.env.PGPORT) || 5432,
-  database: process.env.PGDATABASE || "ledger",
-  user: process.env.PGUSER || "ledger",
-  password: process.env.PGPASSWORD || "ledger"
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
 });
 
+export default pool;
+
 export async function initDb() {
-  // Enable gen_random_uuid if using postgres < 13 without extension you can adjust accordingly.
   await pool.query(`CREATE EXTENSION IF NOT EXISTS "pgcrypto";`);
 
   await pool.query(`
@@ -39,4 +34,3 @@ export async function initDb() {
     );
   `);
 }
-
