@@ -93,7 +93,7 @@ export async function tracesRoutes(
           BOOL_OR(s.risk_flag) AS has_risk
         FROM traces t
         LEFT JOIN steps s ON s.trace_id = t.id
-        GROUP BY t.id
+        GROUP BY t.id, t.agent, t.model, t.created_at
         ORDER BY t.created_at DESC
         LIMIT 100
         `
@@ -140,11 +140,12 @@ export async function tracesRoutes(
     }
   });
 
-  // Replay a trace (MVP: simulated)
+  // Replay a trace (real execution via Ollama)
   app.post<{
     Params: { id: string };
   }>("/trace/:id/replay", async (request, reply) => {
     const { id } = request.params;
+    const OLLAMA_BASE = process.env.OLLAMA_BASE_URL || "http://localhost:11434";
 
     try {
       const traceRes = await pool.query(
@@ -165,18 +166,60 @@ export async function tracesRoutes(
       );
 
       const primaryStep = stepsRes.rows[0];
+      const trace = traceRes.rows[0];
 
-      // In a real integration, this is where you'd call your LLM provider.
-      const simulatedResponse = {
-        replayed: true,
-        message:
-          "Replay executed in AI Decision Ledger MVP. Wire this endpoint to your LLM provider to perform a real replay.",
-        original_prompt: primaryStep?.prompt ?? null,
-        original_response: primaryStep?.response ?? null,
-        model: traceRes.rows[0].model
-      };
+      if (!primaryStep?.prompt) {
+        return reply.status(400).send({
+          error: "No prompt found for this trace"
+        });
+      }
 
-      return reply.send(simulatedResponse);
+      const start = Date.now();
+      let ollamaRes: Response;
+      try {
+        ollamaRes = await fetch(`${OLLAMA_BASE}/api/generate`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            model: trace.model,
+            prompt: primaryStep.prompt,
+            stream: false
+          })
+        });
+      } catch (_err) {
+        app.log.warn({ err: _err }, "Ollama request failed");
+        return reply.status(503).send({
+          error: "Local model server unavailable"
+        });
+      }
+
+      if (!ollamaRes.ok) {
+        app.log.warn({ status: ollamaRes.status }, "Ollama returned error");
+        return reply.status(503).send({
+          error: "Local model server unavailable"
+        });
+      }
+
+      let result: { response?: string };
+      try {
+        result = await ollamaRes.json();
+      } catch (_err) {
+        app.log.warn({ err: _err }, "Ollama response not JSON");
+        return reply.status(503).send({
+          error: "Local model server unavailable"
+        });
+      }
+
+      const latency_ms = Date.now() - start;
+      const replayResponse = result?.response ?? "";
+
+      return reply.send({
+        model: trace.model,
+        original_prompt: primaryStep.prompt,
+        original_response: primaryStep.response ?? null,
+        replay_response: replayResponse,
+        latency_ms
+      });
     } catch (err) {
       app.log.error({ err }, "Failed to replay trace");
       return reply.status(500).send({ error: "Failed to replay trace" });
